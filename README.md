@@ -2,15 +2,13 @@
 
 > **Read-only archive of released versions of ernestdefoe/connect.** Not for installation: use [Packagist](https://packagist.org/packages/ernestdefoe/connect) or the [upstream repository](https://github.com/ernestdefoe/connect).
 
-**3** versions archived · Latest: [`v1.0.2`](https://github.com/flarchive/ernestdefoe-connect/tree/archive/v1.0.2) · License: `MIT` · Flarum: `^2.0`
+**0** versions archived · Latest: [`v1.0.3`](https://github.com/flarchive/ernestdefoe-connect/tree/archive/v1.0.3) · License: `MIT` · Flarum: `^2.0`
 
 ## Archived Versions
 
 | Version | Released | Flarum | Source |
 |---|---|---|---|
-| `v1.0.0` | 2026-07-23 | `^2.0` | [Browse](https://github.com/flarchive/ernestdefoe-connect/tree/archive/v1.0.0) |
-| `v1.0.1` | 2026-07-24 | `^2.0` | [Browse](https://github.com/flarchive/ernestdefoe-connect/tree/archive/v1.0.1) |
-| `v1.0.2` | 2026-10-05 | `^2.0` | [Browse](https://github.com/flarchive/ernestdefoe-connect/tree/archive/v1.0.2) |
+| — | — | — | — |
 
 Catalog entry: [packages/ernestdefoe-connect.json](https://github.com/flarchive/archive-index/blob/main/packages/ernestdefoe-connect.json)
 
