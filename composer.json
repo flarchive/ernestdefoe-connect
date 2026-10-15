@@ -1,0 +1,78 @@
+{
+    "name": "ernestdefoe/connect",
+    "description": "Automation for Flarum 2 — an embedded Zapier experience in your admin, an in-app if-this-then-that Rules engine, outgoing webhooks, and a scoped REST API. Works with Zapier, Make, IFTTT, n8n and anything that speaks webhooks.",
+    "type": "flarum-extension",
+    "license": "MIT",
+    "keywords": [
+        "flarum",
+        "extension",
+        "automation",
+        "webhooks",
+        "zapier",
+        "rules",
+        "integration"
+    ],
+    "authors": [
+        {
+            "name": "Ernestdefoe",
+            "email": "ernestdefoe@gmail.com"
+        }
+    ],
+    "support": {
+        "forum": "https://discuss.flarum.org/d/39610-connect-for-flarum-2-made-with-ai",
+        "issues": "https://github.com/ernestdefoe/connect/issues",
+        "source": "https://github.com/ernestdefoe/connect"
+    },
+    "require": {
+        "php": "^8.3",
+        "flarum/core": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Ernestdefoe\\Connect\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Ernestdefoe\\Connect\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "flarum-extension": {
+            "title": "Connect",
+            "category": "feature",
+            "icon": {
+                "name": "fas fa-bolt",
+                "backgroundColor": "#ff5a2c",
+                "color": "#fff"
+            },
+            "optional-dependencies": [
+                "flarum/tags"
+            ]
+        }
+    },
+    "require-dev": {
+        "flarum/phpstan": "^2.0",
+        "flarum/tags": "^2.0",
+        "flarum/testing": "^2.0"
+    },
+    "scripts": {
+        "test": [
+            "@test:integration"
+        ],
+        "test:integration": "phpunit -c tests/phpunit.integration.xml",
+        "test:setup": "@php tests/integration/setup.php",
+        "analyse:phpstan": "phpstan analyse"
+    },
+    "scripts-descriptions": {
+        "test": "Runs all tests.",
+        "test:integration": "Runs all integration tests.",
+        "test:setup": "Sets up a database for use with integration tests. Execute this only once.",
+        "analyse:phpstan": "Run static analysis"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "beta",
+    "prefer-stable": true
+}
