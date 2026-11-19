@@ -1,0 +1,163 @@
+<?php
+
+namespace Ernestdefoe\Connect\Rules;
+
+use Ernestdefoe\Connect\Http\SafeUrl;
+use Flarum\Api\Client as ApiClient;
+use Flarum\Discussion\Discussion;
+use Flarum\User\User;
+use GuzzleHttp\Client as Http;
+use Psr\Log\LoggerInterface;
+
+/**
+ * Executes a rule's actions against a fired event. The target (which discussion,
+ * which user) is resolved from the event + payload, so the same action ("add a
+ * tag") works whether the trigger was a new discussion or a new reply.
+ */
+class ActionRunner
+{
+    public function __construct(
+        protected ApiClient $api,
+        protected Http $http,
+        protected LoggerInterface $log
+    ) {
+    }
+
+    /**
+     * How many rules are executing in this process right now.
+     *
+     * 🚨 A rule's own actions must not trigger rules. A "post created → reply"
+     * rule posts a reply, which is a post created, which runs the rule again:
+     * on the default sync queue that recursed inside the original request with
+     * no end. Engine::fire() checks this and stays quiet while a rule is acting.
+     * Webhooks still fire for those posts; only the in-app rules are skipped.
+     *
+     * This also holds on a real (async) queue: the actions run inside the
+     * RunRule job, and Flarum dispatches Posted/Started synchronously in that
+     * same worker process, so Engine::fire() sees the counter there too.
+     */
+    public static int $running = 0;
+
+    /** @param array $actions [{type, ...params}] */
+    public function run(array $actions, string $event, array $payload, User $actor): void
+    {
+        self::$running++;
+
+        try {
+            $this->runActions($actions, $event, $payload, $actor);
+        } finally {
+            self::$running--;
+        }
+    }
+
+    private function runActions(array $actions, string $event, array $payload, User $actor): void
+    {
+        $ctx = $this->context($event, $payload);
+
+        foreach ($actions as $action) {
+            $action = (array) $action;
+            $type = $action['type'] ?? '';
+
+            if (! ActionRegistry::exists($type)) {
+                continue;
+            }
+
+            try {
+                $this->one($type, $action, $event, $ctx, $payload, $actor);
+            } catch (\Throwable $e) {
+                // One failed action shouldn't abort the rest of the rule, but
+                // the forum's log should say which one failed and why.
+                $this->log->warning("[connect] Rule action {$type} failed on {$event}: ".$e->getMessage(), ['exception' => $e]);
+            }
+        }
+    }
+
+    private function one(string $type, array $a, string $event, array $ctx, array $payload, User $actor): void
+    {
+        switch ($type) {
+            case 'reply':
+                if ($ctx['discussionId'] && trim((string) ($a['content'] ?? '')) !== '') {
+                    $this->call($actor, 'POST', '/posts', [
+                        'type' => 'posts',
+                        'attributes' => ['content' => (string) $a['content']],
+                        'relationships' => ['discussion' => ['data' => ['type' => 'discussions', 'id' => (string) $ctx['discussionId']]]],
+                    ]);
+                }
+                break;
+
+            case 'add_tag':
+            case 'remove_tag':
+                if ($ctx['discussionId'] && ($tagId = (int) ($a['tagId'] ?? 0)) && ($d = Discussion::query()->whereKey($ctx['discussionId'])->first())) {
+                    $this->relate($actor, 'discussions', (int) $d->id, 'tags', $d->getAttribute('tags')->pluck('id')->all(), $tagId, $type === 'add_tag');
+                }
+                break;
+
+            case 'add_to_group':
+            case 'remove_from_group':
+                if ($ctx['userId'] && ($groupId = (int) ($a['groupId'] ?? 0)) && ($u = User::query()->whereKey($ctx['userId'])->first())) {
+                    $this->relate($actor, 'users', (int) $u->id, 'groups', $u->groups()->pluck('id')->all(), $groupId, $type === 'add_to_group');
+                }
+                break;
+
+            case 'call_webhook':
+                if (($url = (string) ($a['url'] ?? '')) && ($safe = SafeUrl::options($url)) !== null) {
+                    $this->http->post($url, $safe + [
+                        'json' => ['event' => $event, 'data' => $payload],
+                        'timeout' => 12,
+                        'connect_timeout' => 6,
+                        'http_errors' => false,
+                    ]);
+                }
+                break;
+        }
+    }
+
+    /**
+     * Add $id to (or remove it from) a to-many relationship through Flarum's own
+     * API, so the owning extension's permissions, counts and events all apply.
+     */
+    private function relate(User $actor, string $type, int $modelId, string $relation, array $current, int $id, bool $add): void
+    {
+        $current = array_map('intval', $current);
+        if ($add === in_array($id, $current, true)) {
+            return; // already there / already gone
+        }
+
+        $ids = $add ? [...$current, $id] : array_diff($current, [$id]);
+
+        $this->call($actor, 'PATCH', "/$type/$modelId", [
+            'type' => $type,
+            'id' => (string) $modelId,
+            'relationships' => [$relation => ['data' => array_map(
+                fn (int $related) => ['type' => $relation, 'id' => (string) $related],
+                array_values($ids)
+            )]],
+        ]);
+    }
+
+    /** Send one internal API request as $actor; a refusal is thrown so run() logs it. */
+    private function call(User $actor, string $method, string $path, array $data): void
+    {
+        $response = $this->api->withActor($actor)->withBody(['data' => $data])->send($method, $path);
+
+        if ($response->getStatusCode() >= 400) {
+            throw new \RuntimeException("$method $path answered ".$response->getStatusCode().': '.$response->getBody());
+        }
+    }
+
+    /**
+     * Resolve the discussion/user this event is "about".
+     *
+     * @return array{discussionId: int, userId: int}
+     */
+    private function context(string $event, array $payload): array
+    {
+        $isPost = str_starts_with($event, 'post');
+        $isUser = str_starts_with($event, 'user');
+
+        return [
+            'discussionId' => $isPost ? (int) ($payload['discussionId'] ?? 0) : (int) ($payload['id'] ?? 0),
+            'userId' => $isUser ? (int) ($payload['id'] ?? 0) : (int) ($payload['authorId'] ?? 0),
+        ];
+    }
+}
